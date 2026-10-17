@@ -13,7 +13,7 @@ const DOUYIN_CONTROL_SCRIPT = fileURLToPath(
   new URL("./douyin-control.ps1", import.meta.url),
 );
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-const EVALUATION_INTERVAL_MS = 1000;
+const EVALUATION_INTERVAL_MS = 250;
 const RECONNECT_INTERVAL_MS = 1800;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const execFileAsync = promisify(execFile);
@@ -459,25 +459,37 @@ $windowTitle = if ($windowFound) { $window.MainWindowTitle } else { "" }
 }
 
 async function findDouyinWindow() {
-  const status = await inspectDouyinDesktop();
-  return {
-    found: status.windowFound,
-    processId: status.processId,
-    windowHandle: status.windowHandle,
-    title: status.title,
+  const script = `
+$window = Get-Process -Name douyin -ErrorAction SilentlyContinue |
+  Where-Object { $_.MainWindowHandle -ne 0 } |
+  Sort-Object StartTime -Descending |
+  Select-Object -First 1
+if (-not $window) {
+  @{ found = $false; processId = $null; windowHandle = $null; title = '' } | ConvertTo-Json -Compress
+  exit 0
+}
+@{
+  found = $true
+  processId = $window.Id
+  windowHandle = $window.MainWindowHandle.ToInt64()
+  title = $window.MainWindowTitle
+} | ConvertTo-Json -Compress
+`;
+  const output = await runPowerShell(script, 3000);
+  const payload = parsePlaybackPayload(output);
+  return payload || {
+    found: false,
+    processId: null,
+    windowHandle: null,
+    title: "",
   };
 }
-
-function douyinWindowScript(windowHandle) {
-  const handle = Number(windowHandle);
-  if (!Number.isSafeInteger(handle) || handle <= 0) {
-    throw new Error("电脑端抖音窗口句柄无效");
-  }
+function codexWindowScript() {
   return `
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public static class DouyinWindowControl {
+public static class CodexWindowControl {
   [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
@@ -487,27 +499,66 @@ public static class DouyinWindowControl {
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
 }
 "@
-$handle = [IntPtr]${handle}
-[void][DouyinWindowControl]::ShowWindowAsync($handle, 9)
-$foreground = [DouyinWindowControl]::GetForegroundWindow()
-[uint32]$foregroundProcess = 0
-$foregroundThread = [DouyinWindowControl]::GetWindowThreadProcessId($foreground, [ref]$foregroundProcess)
-$currentThread = [DouyinWindowControl]::GetCurrentThreadId()
-$attached = [DouyinWindowControl]::AttachThreadInput($foregroundThread, $currentThread, $true)
-[void][DouyinWindowControl]::BringWindowToTop($handle)
-[void][DouyinWindowControl]::SetForegroundWindow($handle)
-if ($attached) { [void][DouyinWindowControl]::AttachThreadInput($foregroundThread, $currentThread, $false) }
-Start-Sleep -Milliseconds 180
-if ([DouyinWindowControl]::GetForegroundWindow() -ne $handle) { Write-Output 'focused=false'; exit 2 }
-Write-Output 'focused=true'
+$candidates = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+  $_.MainWindowHandle -ne 0 -and $_.ProcessName -match '^(ChatGPT|Codex)$'
+})
+$window = $candidates | Where-Object {
+  $path = ''
+  try { $path = [string]$_.Path } catch { $path = '' }
+  $path -match 'OpenAI\.Codex' -or $_.MainWindowTitle -match 'Codex'
+} | Sort-Object StartTime -Descending | Select-Object -First 1
+if (-not $window) {
+  $window = $candidates | Sort-Object StartTime -Descending | Select-Object -First 1
+}
+if (-not $window) {
+  @{ ok = $false; focused = $false; error = '未找到 Codex 桌面窗口' } | ConvertTo-Json -Compress
+  exit 0
+}
+$handle = [IntPtr]($window.MainWindowHandle.ToInt64())
+[void][CodexWindowControl]::ShowWindowAsync($handle, 9)
+$focused = $false
+$attempts = 0
+while (-not $focused -and $attempts -lt 3) {
+  $attempts += 1
+  $foreground = [CodexWindowControl]::GetForegroundWindow()
+  [uint32]$foregroundProcess = 0
+  $foregroundThread = [CodexWindowControl]::GetWindowThreadProcessId($foreground, [ref]$foregroundProcess)
+  $currentThread = [CodexWindowControl]::GetCurrentThreadId()
+  $attached = [CodexWindowControl]::AttachThreadInput($foregroundThread, $currentThread, $true)
+  [void][CodexWindowControl]::BringWindowToTop($handle)
+  [void][CodexWindowControl]::SetForegroundWindow($handle)
+  if ($attached) { [void][CodexWindowControl]::AttachThreadInput($foregroundThread, $currentThread, $false) }
+  Start-Sleep -Milliseconds 100
+  $focused = [CodexWindowControl]::GetForegroundWindow() -eq $handle
+}
+@{
+  ok = $true
+  focused = [bool]$focused
+  processId = $window.Id
+  windowHandle = $window.MainWindowHandle.ToInt64()
+  title = $window.MainWindowTitle
+  attempts = $attempts
+} | ConvertTo-Json -Compress
 `;
 }
 
-async function focusDouyinWindow(window) {
-  const output = await runPowerShell(douyinWindowScript(window.windowHandle), 7000);
-  if (!output.includes("focused=true")) {
-    throw new Error("无法将电脑端抖音切到前台");
+async function focusCodexWindow() {
+  const output = await runPowerShell(codexWindowScript(), 6500);
+  const text = String(output || "").trim();
+  const lastLine = text.split(/\r?\n/).filter(Boolean).at(-1);
+  let payload = null;
+  try {
+    payload = JSON.parse(lastLine);
+  } catch (_) {
+    payload = null;
   }
+  if (!payload?.ok) {
+    throw new Error(payload?.error || "无法定位 Codex 桌面窗口");
+  }
+  if (!payload.focused) {
+    throw new Error("无法将 Codex 桌面窗口切到前台");
+  }
+  return payload;
 }
 
 function parsePlaybackPayload(stdout) {
@@ -521,24 +572,26 @@ function parsePlaybackPayload(stdout) {
   }
 }
 
-async function runDouyinPlaybackControl(windowHandle, action) {
+async function runDouyinPlaybackControl(windowHandle, action, focusWindow = false) {
   try {
+    const args = [
+      "-NoProfile",
+      "-NonInteractive",
+      "-WindowStyle",
+      "Hidden",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      DOUYIN_CONTROL_SCRIPT,
+      "-Action",
+      action,
+      "-WindowHandle",
+      String(windowHandle),
+    ];
+    if (focusWindow) args.push("-FocusWindow");
     const { stdout, stderr } = await execFileAsync(
       "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-WindowStyle",
-        "Hidden",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        DOUYIN_CONTROL_SCRIPT,
-        "-Action",
-        action,
-        "-WindowHandle",
-        String(windowHandle),
-      ],
+      args,
       {
         windowsHide: true,
         timeout: DOUYIN_CONTROL_TIMEOUT_MS,
@@ -563,8 +616,12 @@ async function runDouyinPlaybackControl(windowHandle, action) {
   }
 }
 
-async function controlDouyinPlayback(window, action) {
-  const result = await runDouyinPlaybackControl(window.windowHandle, action);
+async function controlDouyinPlayback(window, action, focusWindow = false) {
+  const result = await runDouyinPlaybackControl(
+    window.windowHandle,
+    action,
+    focusWindow,
+  );
   return {
     ...window,
     playbackState: result.state,
@@ -594,15 +651,14 @@ async function openDouyinDesktop() {
   if (!status.windowFound) {
     throw new Error("电脑端抖音正在启动，但暂未找到可聚焦窗口");
   }
-  await focusDouyinWindow(status);
-  const control = await controlDouyinPlayback(status, "play");
+  const control = await controlDouyinPlayback(status, "play", true);
   return { ...control, alreadyRunning };
 }
 
 async function pauseDouyinDesktop() {
   const window = await findDouyinWindow();
   if (!window.found) throw new Error("电脑端抖音窗口不存在");
-  return controlDouyinPlayback(window, "pause");
+  return controlDouyinPlayback(window, "pause", true);
 }
 
 function writeJson(response, status, payload) {
@@ -659,6 +715,20 @@ const server = http.createServer(async (request, response) => {
     } catch (error) {
       writeJson(response, 503, {
         ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+
+  if (pathname === "/codex/focus" && request.method === "POST") {
+    try {
+      const focusedWindow = await focusCodexWindow();
+      writeJson(response, 200, { ok: true, ...focusedWindow });
+    } catch (error) {
+      writeJson(response, 503, {
+        ok: false,
+        focused: false,
         error: error instanceof Error ? error.message : String(error),
       });
     }

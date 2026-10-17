@@ -506,16 +506,29 @@ async function main() {
     await customAi.evaluate(() => {
       window.dispatchEvent(new CustomEvent("work-video-link:end"));
     });
-    const eventCompleted = await waitFor(
-      async () => {
-        const session = await getSession(serviceWorker);
-        return session && !session.active && session.id === eventSession.id
-          ? session
-          : null;
-      },
-      15000,
-      "the custom AI end event to pause the session",
-    );
+    let eventCompleted;
+    try {
+      eventCompleted = await waitFor(
+        async () => {
+          const session = await getSession(serviceWorker);
+          return session && !session.active && session.id === eventSession.id
+            ? session
+            : null;
+        },
+        15000,
+        "the custom AI end event to pause the session",
+      );
+    } catch (error) {
+      const diagnostic = await serviceWorker.evaluate(async () => ({
+        session: (await chrome.storage.session.get("activeSession")).activeSession,
+        sources: (await chrome.storage.session.get("activeWorkSources"))
+          .activeWorkSources,
+      }));
+      console.error(
+        JSON.stringify({ eventSession, diagnostic }, null, 2),
+      );
+      throw error;
+    }
     assert.equal(eventCompleted.endReason, "generation-complete");
 
     console.log(

@@ -18,6 +18,8 @@
   const WORKBENCH_HOSTS = new Set(["chatgpt.com", "chat.openai.com"]);
   const DOUYIN_HOSTS = new Set(["douyin.com", "www.douyin.com"]);
   const VIDEO_MODES = new Set(["web", "desktop"]);
+  const WORK_STATE_POLL_MS = 160;
+  const COMPLETION_STABLE_MS = 450;
   const CUSTOM_SOURCE_LIMIT = 20;
   const CUSTOM_STATE_ATTRIBUTE = "data-work-video-link-state";
   const CUSTOM_START_EVENT = "work-video-link:start";
@@ -178,10 +180,12 @@
 
   return {
     DEFAULT_SETTINGS,
+    COMPLETION_STABLE_MS,
     CUSTOM_END_EVENT,
     CUSTOM_SOURCE_LIMIT,
     CUSTOM_START_EVENT,
     CUSTOM_STATE_ATTRIBUTE,
+    WORK_STATE_POLL_MS,
     createSessionId,
     findCustomSource,
     isCustomSourceUrl,

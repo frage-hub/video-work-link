@@ -15,8 +15,8 @@
   ].join(",");
   const COMPOSER_SELECTOR =
     'form, [data-testid*="composer"], [class*="composer"], [data-testid*="thread-bottom"]';
-  const COMPLETION_STABLE_MS = 1800;
-  const POLL_MS = 220;
+  const COMPLETION_STABLE_MS = WorkLink.COMPLETION_STABLE_MS;
+  const POLL_MS = WorkLink.WORK_STATE_POLL_MS;
 
   let generationSeen = false;
   let completionPendingSince = 0;

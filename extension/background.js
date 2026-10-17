@@ -45,6 +45,7 @@ let desktopStatusQueue = Promise.resolve();
 let desktopUnavailableTimer = null;
 let workSourceQueue = Promise.resolve();
 let finishInFlight = null;
+let workEndRevision = 0;
 const videoAvailability = {
   web: {
     available: null,
@@ -542,16 +543,30 @@ async function updateBadge(session) {
 
 async function focusTab(tabId) {
   if (!Number.isInteger(tabId)) return false;
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    await chrome.tabs.update(tabId, { active: true });
-    if (Number.isInteger(tab.windowId)) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (!Number.isInteger(tab.windowId)) return false;
+      const browserWindow = await chrome.windows.get(tab.windowId);
+      if (browserWindow.state === "minimized") {
+        await chrome.windows.update(tab.windowId, { state: "normal" });
+      }
+      await chrome.tabs.update(tabId, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true });
+      await delay(70);
+      const [activeTab, focusedWindow] = await Promise.all([
+        chrome.tabs.get(tabId),
+        chrome.windows.get(tab.windowId),
+      ]);
+      if (activeTab.active === true && focusedWindow.focused === true) {
+        return true;
+      }
+    } catch (_) {
+      // Retry if the browser is still moving the tab or restoring the window.
     }
-    return true;
-  } catch (_) {
-    return false;
+    await delay(80);
   }
+  return false;
 }
 
 async function sendToTab(tabId, message, timeoutMs = 900) {
@@ -786,6 +801,7 @@ async function activateCodexDesktop(targetId) {
     if (!resolvedTargetId) {
       const response = await fetch(`${CODEX_ACTIVATE_BASE}/json/list`, {
         cache: "no-store",
+        signal: AbortSignal.timeout(2000),
       });
       if (!response.ok) return false;
       const targets = await response.json();
@@ -797,7 +813,7 @@ async function activateCodexDesktop(targetId) {
     if (!resolvedTargetId) return false;
     const response = await fetch(
       `${CODEX_ACTIVATE_BASE}/json/activate/${encodeURIComponent(resolvedTargetId)}`,
-      { cache: "no-store" },
+      { cache: "no-store", signal: AbortSignal.timeout(2000) },
     );
     return response.ok;
   } catch (_) {
@@ -923,6 +939,7 @@ async function startSession({
     if (current?.active) {
       return { ok: true, session: current, alreadyActive: true };
     }
+    const autoStartRevision = reason === "auto" ? workEndRevision : null;
 
     const settings = await getSettings();
     if (reason === "auto" && !settings.autoLink) {
@@ -991,6 +1008,17 @@ async function startSession({
     await saveSession(session);
     await updateBadge(session);
 
+    if (
+      reason === "auto" &&
+      workEndRevision !== autoStartRevision
+    ) {
+      return finishSession({
+        sessionId: session.id,
+        reason: "generation-complete",
+        fromTabId: workbench?.id || null,
+      });
+    }
+
     try {
       let douyinTab = null;
       let desktopApp = null;
@@ -1035,6 +1063,16 @@ async function startSession({
       session.phase = "active";
       await saveSession(session);
       await updateBadge(session);
+      if (
+        reason === "auto" &&
+        workEndRevision !== autoStartRevision
+      ) {
+        return finishSession({
+          sessionId: session.id,
+          reason: "generation-complete",
+          fromTabId: workbench?.id || null,
+        });
+      }
       if (douyinTab) await notifyDouyin(douyinTab.id, session);
       return { ok: true, session };
     } catch (error) {
@@ -1065,7 +1103,16 @@ async function startSession({
 }
 
 async function finishSession(options = {}) {
-  if (finishInFlight) return finishInFlight;
+  while (finishInFlight) {
+    await finishInFlight;
+    const session = await getSession();
+    if (
+      !session?.active ||
+      (options.sessionId && session.id !== options.sessionId)
+    ) {
+      return { ok: true, session, alreadyFinished: true };
+    }
+  }
 
   finishInFlight = finishSessionOnce(options);
   try {
@@ -1149,8 +1196,13 @@ async function finishSessionOnce({
       finished.workbenchKind === "desktop" ||
       finished.desktopTargetId
     ) {
-      const activated = await activateCodexDesktop(finished.desktopTargetId);
-      if (!activated && Number.isInteger(finished.workbenchTabId)) {
+      const [activated, bridgeFocused] = await Promise.all([
+        activateCodexDesktop(finished.desktopTargetId),
+        callDesktopBridge("/codex/focus", "POST", 3500)
+          .then((payload) => payload?.focused === true)
+          .catch(() => false),
+      ]);
+      if (!activated && !bridgeFocused && Number.isInteger(finished.workbenchTabId)) {
         await focusTab(finished.workbenchTabId);
       }
     } else if (Number.isInteger(finished.workbenchTabId)) {
@@ -1230,6 +1282,7 @@ async function registerBrowserGenerationStarted(tab) {
 }
 
 async function registerBrowserGenerationCompleted(tabId) {
+  workEndRevision += 1;
   const sourceId = browserWorkSourceId(tabId);
   if (!sourceId) return { ok: false, reason: "missing-workbench-tab" };
   await removeWorkSource(sourceId);

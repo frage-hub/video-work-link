@@ -4,7 +4,9 @@ param(
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
-    [long]$WindowHandle
+    [long]$WindowHandle,
+
+    [switch]$FocusWindow
 )
 
 $ErrorActionPreference = "Stop"
@@ -80,6 +82,24 @@ public static class DouyinAppControl
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindowAsync(IntPtr hWnd, int command);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
 
     [DllImport("user32.dll")]
     private static extern bool PrintWindow(
@@ -165,6 +185,30 @@ public static class DouyinAppControl
         }
     }
 
+    public static bool FocusWindow(IntPtr windowHandle)
+    {
+        ShowWindowAsync(windowHandle, SW_RESTORE);
+        IntPtr foreground = GetForegroundWindow();
+        uint foregroundProcess;
+        uint foregroundThread = GetWindowThreadProcessId(foreground, out foregroundProcess);
+        uint currentThread = GetCurrentThreadId();
+        bool attached = AttachThreadInput(foregroundThread, currentThread, true);
+        try
+        {
+            BringWindowToTop(windowHandle);
+            SetForegroundWindow(windowHandle);
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(foregroundThread, currentThread, false);
+            }
+        }
+        Thread.Sleep(120);
+        return GetForegroundWindow() == windowHandle;
+    }
+
     public static void ClickVideo(IntPtr renderWindow)
     {
         RECT rect;
@@ -200,7 +244,7 @@ public static class DouyinAppControl
         int startedAt = Environment.TickCount;
         using (Bitmap before = Capture(renderWindow))
         {
-            Thread.Sleep(1400);
+            Thread.Sleep(800);
             using (Bitmap after = Capture(renderWindow))
             {
                 RegionStats content = CompareRegion(
@@ -406,6 +450,9 @@ function Test-DesiredState {
 try {
     $window = [IntPtr]$WindowHandle
     [DouyinAppControl]::RestoreWindow($window)
+    if ($FocusWindow -and -not [DouyinAppControl]::FocusWindow($window)) {
+        throw "Unable to focus the Douyin window."
+    }
     $renderWindow = [DouyinAppControl]::FindRenderWindow($window)
     $metrics = Get-PlaybackMetrics -RenderWindow $renderWindow
     $state = $metrics.State
@@ -416,7 +463,7 @@ try {
         while (-not (Test-DesiredState -State $state -DesiredState $desiredState) -and $attempts -lt 2) {
             $attempts++
             [DouyinAppControl]::ClickVideo($renderWindow)
-            Start-Sleep -Milliseconds 1300
+            Start-Sleep -Milliseconds 800
             $metrics = Get-PlaybackMetrics -RenderWindow $renderWindow
             $state = $metrics.State
         }

@@ -2,8 +2,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  COMPLETION_STABLE_MS,
   DEFAULT_SETTINGS,
   findCustomSource,
+  WORK_STATE_POLL_MS,
   isDouyinUrl,
   isLikelyNextControl,
   isLikelyStopControl,
@@ -16,6 +18,11 @@ const {
   pickScrollDistance,
   normalizeVideoMode,
 } = require("../extension/lib/worklink.js");
+
+test("keeps work completion detection responsive", () => {
+  assert.ok(WORK_STATE_POLL_MS <= 160);
+  assert.ok(COMPLETION_STABLE_MS <= 450);
+});
 
 test("normalizes settings and clamps video limits", () => {
   assert.deepEqual(normalizeSettings(undefined), DEFAULT_SETTINGS);

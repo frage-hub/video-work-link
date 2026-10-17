@@ -4,8 +4,8 @@
   if (globalThis.__workVideoLinkCustomAiLoaded) return;
   globalThis.__workVideoLinkCustomAiLoaded = true;
 
-  const POLL_MS = 220;
-  const COMPLETION_STABLE_MS = 1500;
+  const POLL_MS = WorkLink.WORK_STATE_POLL_MS;
+  const COMPLETION_STABLE_MS = WorkLink.COMPLETION_STABLE_MS;
   let config = null;
   let generationSeen = false;
   let completionPendingSince = 0;
