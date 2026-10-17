@@ -5,6 +5,9 @@ $extensionSource = Join-Path $repoRoot "extension"
 $bridgeSource = Join-Path $repoRoot "bridge"
 $readmeSource = Join-Path $repoRoot "README.md"
 $licenseSource = Join-Path $repoRoot "LICENSE"
+$installCmdSource = Join-Path $repoRoot "INSTALL.cmd"
+$installScriptSource = Join-Path $repoRoot "INSTALL.ps1"
+$installGuideSource = Join-Path $repoRoot "INSTALL.md"
 $researchSource = Join-Path $repoRoot "docs\github-research.md"
 $customAiGuideSource = Join-Path $repoRoot "docs\custom-ai-integration.md"
 $releaseRoot = Join-Path $repoRoot "release"
@@ -18,8 +21,6 @@ $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | Convert
 $version = [string]$manifest.version
 $stagingRoot = Join-Path $releaseRoot ".staging-$version-$PID"
 $fullStage = Join-Path $stagingRoot "full"
-$extensionStage = Join-Path $stagingRoot "extension"
-$bridgeStage = Join-Path $stagingRoot "bridge"
 
 $resolvedRelease = [IO.Path]::GetFullPath($releaseRoot)
 $resolvedStaging = [IO.Path]::GetFullPath($stagingRoot)
@@ -40,36 +41,34 @@ if (Test-Path -LiteralPath $stagingRoot) {
     Remove-Item -LiteralPath $stagingRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $fullStage -Force | Out-Null
-New-Item -ItemType Directory -Path $extensionStage -Force | Out-Null
-New-Item -ItemType Directory -Path $bridgeStage -Force | Out-Null
 
 try {
     Copy-Item -LiteralPath $extensionSource -Destination $fullStage -Recurse
     Copy-Item -LiteralPath $bridgeSource -Destination $fullStage -Recurse
     Copy-Item -LiteralPath $readmeSource -Destination $fullStage
     Copy-Item -LiteralPath $licenseSource -Destination $fullStage
+    Copy-Item -LiteralPath $installCmdSource -Destination $fullStage
+    Copy-Item -LiteralPath $installScriptSource -Destination $fullStage
+    Copy-Item -LiteralPath $installGuideSource -Destination $fullStage
     $docsStage = Join-Path $fullStage "docs"
     New-Item -ItemType Directory -Path $docsStage -Force | Out-Null
     Copy-Item -LiteralPath $researchSource -Destination $docsStage
     Copy-Item -LiteralPath $customAiGuideSource -Destination $docsStage
 
-    Copy-Item -Path (Join-Path $extensionSource "*") -Destination $extensionStage -Recurse
-    Copy-Item -LiteralPath $licenseSource -Destination $extensionStage
-    Copy-Item -Path (Join-Path $bridgeSource "*") -Destination $bridgeStage -Recurse
-    Copy-Item -LiteralPath $licenseSource -Destination $bridgeStage
-
     $fullZip = Join-Path $releaseRoot "video-work-link-v$version.zip"
-    $extensionZip = Join-Path $releaseRoot "video-work-link-extension-v$version.zip"
-    $bridgeZip = Join-Path $releaseRoot "video-work-link-bridge-v$version.zip"
+    $legacyExtensionZip = Join-Path $releaseRoot "video-work-link-extension-v$version.zip"
+    $legacyBridgeZip = Join-Path $releaseRoot "video-work-link-bridge-v$version.zip"
 
     Compress-Archive -Path (Join-Path $fullStage "*") -DestinationPath $fullZip -Force
-    Compress-Archive -Path (Join-Path $extensionStage "*") -DestinationPath $extensionZip -Force
-    Compress-Archive -Path (Join-Path $bridgeStage "*") -DestinationPath $bridgeZip -Force
 
-    Write-Output "Created:"
+    foreach ($legacyZip in @($legacyExtensionZip, $legacyBridgeZip)) {
+        if (Test-Path -LiteralPath $legacyZip) {
+            Remove-Item -LiteralPath $legacyZip -Force
+        }
+    }
+
+    Write-Output "Created single-file installer package:"
     Write-Output $fullZip
-    Write-Output $extensionZip
-    Write-Output $bridgeZip
 } finally {
     if (Test-Path -LiteralPath $stagingRoot) {
         Remove-Item -LiteralPath $stagingRoot -Recurse -Force

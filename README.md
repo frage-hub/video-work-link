@@ -54,16 +54,17 @@
 
 需要 Windows、Edge/Chrome，以及 Node.js 22 或更新版本。
 
-公开版本可从 [GitHub Releases](https://github.com/frage-hub/video-work-link/releases/latest) 下载。“完整安装包”包含扩展、本地桥、README 和接入文档；只使用网页版时也可以下载“仅扩展包”。
+公开版本已整合为一个文件：[GitHub Releases](https://github.com/frage-hub/video-work-link/releases/latest) 只提供完整安装包，内含扩展、本地桥、统一安装入口、README 和文档。
 
-
-1. 打开 Edge 的 `edge://extensions`，或 Chrome 的 `chrome://extensions`。
-2. 开启“开发人员模式”。
-3. 选择“加载解压缩的扩展”，指向本仓库的 `extension` 目录；如果使用发布包，解压后指向其中的 `extension` 目录。
+1. 下载并解压发布包。
+2. 双击 `INSTALL.cmd`。安装器会启动本地桥、打开 Edge/Chrome 扩展页，并定位到包内的 `extension` 目录。
+3. 在扩展页开启“开发人员模式”，选择“加载解压缩的扩展”，指向该 `extension` 目录。
 4. 将扩展固定到工具栏。
 5. 在扩展弹窗的“视频端”中选择播放位置。网页版需先在抖音网页登录；电脑端需安装并登录抖音 Windows 客户端。
 
-如果只使用网页版且不需要跟随 Codex 桌面，到这里即可。使用电脑端 App 或跟随 Codex 桌面时，需要安装本地桥：
+浏览器不允许普通安装程序绕过扩展安全确认，因此最后一步需要在扩展页手动确认。
+
+如果只使用网页版且不需要跟随 Codex 桌面，到这里即可。如果 `INSTALL.cmd` 未能启动本地桥，也可以手动运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\bridge\install-autostart.ps1
