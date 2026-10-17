@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>自定义 AI 接入说明</title>
+    <link rel="stylesheet" href="custom-ai.css" />
+    <link rel="stylesheet" href="guide.css" />
+  </head>
+  <body class="guide-page">
+    <div class="guide-shell">
+      <header class="guide-header">
+        <div>
+          <span class="eyebrow">开发说明</span>
+          <h1>自定义 AI 接入协议</h1>
+          <p>适用于其他 AI 网站、内部工具和自建对话页面。</p>
+        </div>
+        <a class="back-link" href="custom-ai.html">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+          返回配置
+        </a>
+      </header>
+
+      <main>
+        <section class="doc-section">
+          <span class="section-index">01</span>
+          <div>
+            <h2>最快接入</h2>
+            <ol class="guide-list">
+              <li>在目标 AI 网站打开一次对话，点击扩展弹窗中的“其他 AI”。</li>
+              <li>配置窗口会带入当前网站域名。填写名称和“工作中”元素选择器，然后保存并授权。</li>
+              <li>重新加载目标网页。开始生成时元素出现，扩展进入抖音；元素消失约 1.5 秒后暂停并返回。</li>
+            </ol>
+          </div>
+        </section>
+
+        <section class="doc-section">
+          <span class="section-index">02</span>
+          <div>
+            <h2>选择器识别</h2>
+            <p>选择器只需要命中生成期间才可见的控件，例如停止按钮、忙碌状态图标或“Generating”文本。扩展不会读取提示词或回答内容。</p>
+            <pre class="doc-code"><code>button[aria-label="Stop response"]
+[data-testid="generation-status"]
+button.stop-button:not([disabled])</code></pre>
+            <p class="callout">选择器应尽量限定在输入区或回答区，避免匹配到页面中长期存在的按钮。</p>
+          </div>
+        </section>
+
+        <section class="doc-section">
+          <span class="section-index">03</span>
+          <div>
+            <h2>页面状态接口</h2>
+            <p>如果网站可以修改页面，推荐在生成开始时设置以下属性。属性存在且值为 <code>working</code> 时，扩展判定任务正在工作。</p>
+            <pre class="doc-code"><code>// 开始
+document.documentElement.setAttribute(
+  "data-work-video-link-state",
+  "working"
+);
+
+// 完成、取消或报错
+document.documentElement.removeAttribute(
+  "data-work-video-link-state"
+);</code></pre>
+            <p>完成状态需要稳定保持约 1.5 秒，避免页面短暂重绘导致误暂停。</p>
+          </div>
+        </section>
+
+        <section class="doc-section">
+          <span class="section-index">04</span>
+          <div>
+            <h2>页面事件接口</h2>
+            <p>适合不方便持续维护 DOM 属性的单页应用。事件由页面窗口派发到自身文档，内容脚本会接收并转发给扩展后台。</p>
+            <pre class="doc-code"><code>window.dispatchEvent(
+  new CustomEvent("work-video-link:start")
+);
+
+window.dispatchEvent(
+  new CustomEvent("work-video-link:end")
+);</code></pre>
+            <p>事件方式会立即上报结束。若网站可能在一次回答中多次派发结束事件，应先在业务层合并短暂状态抖动。</p>
+          </div>
+        </section>
+
+        <section class="doc-section">
+          <span class="section-index">05</span>
+          <div>
+            <h2>联动契约</h2>
+            <dl class="contract-list">
+              <div><dt>工作来源</dt><dd>每个浏览器标签页按一个来源计算。ChatGPT、自定义 AI 和 Codex 桌面可同时工作。</dd></div>
+              <div><dt>启动</dt><dd>任一来源首次进入工作状态时，复用当前抖音会话，不会重复打开多个抖音标签页。</dd></div>
+              <div><dt>暂停</dt><dd>任一来源结束时立即暂停本轮视频并返回对应工作页面；其他来源不会自动重新拉起抖音。</dd></div>
+              <div><dt>权限</dt><dd>自定义网站仅在用户保存规则并授权该域名后注入适配脚本，不申请全站常驻权限。</dd></div>
+            </dl>
+          </div>
+        </section>
+
+        <section class="doc-section">
+          <span class="section-index">06</span>
+          <div>
+            <h2>给适配器开发者的接口</h2>
+            <p>内置站点和自定义站点最终都通过同一组工作来源消息接入后台。新适配器只需在检测到状态变化时发送开始或结束信号。</p>
+            <pre class="doc-code"><code>chrome.runtime.sendMessage({
+  type: "CUSTOM_AI_GENERATION_STARTED",
+  sourceId: "my-ai"
+});
+
+chrome.runtime.sendMessage({
+  type: "CUSTOM_AI_GENERATION_COMPLETED",
+  sourceId: "my-ai"
+});</code></pre>
+            <p>普通用户不需要手动发送这些消息，配置窗口和内容脚本会完成注入、配置、状态去重与页面关闭清理。</p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>自定义 AI 接入</title>
+    <link rel="stylesheet" href="custom-ai.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="titlebar">
+        <div class="title-lockup">
+          <span class="title-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <rect x="1" y="1" width="30" height="30" rx="8" fill="#171a1c"></rect>
+              <path d="M9 9h8a6 6 0 0 1 0 12H9V9Zm5 4v4h3a2 2 0 0 0 0-4h-3Z" fill="#25d7d1"></path>
+              <path d="m18 8 5 4-5 4V8Z" fill="#f13b5f"></path>
+            </svg>
+          </span>
+          <span>
+            <strong>自定义 AI 接入</strong>
+            <small>为其他 AI 网站添加开始与结束检测</small>
+          </span>
+        </div>
+        <button class="icon-button close-button" id="close-window" type="button" aria-label="关闭窗口" title="关闭窗口">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+        </button>
+      </header>
+
+      <main class="workspace">
+        <div class="main-column">
+          <section class="editor-band" aria-labelledby="editor-title">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow" id="editor-mode">新增规则</span>
+                <h1 id="editor-title">连接一个 AI 网站</h1>
+              </div>
+              <button class="text-button" id="cancel-edit" type="button" hidden>取消编辑</button>
+            </div>
+
+            <form id="source-form" novalidate>
+              <div class="form-grid">
+                <label class="field">
+                  <span>显示名称</span>
+                  <input id="source-name" name="name" type="text" maxlength="48" placeholder="例如 Claude" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>AI 网站</span>
+                  <input id="source-origin" name="origin" type="text" inputmode="url" placeholder="https://claude.ai" autocomplete="off" required />
+                </label>
+              </div>
+              <label class="field">
+                <span>工作中元素选择器 <em>可选</em></span>
+                <input id="source-selector" name="selector" type="text" maxlength="1000" placeholder="例如 button[aria-label='Stop response']" autocomplete="off" spellcheck="false" />
+                <small>当该元素可见时视为正在工作。留空则使用页面状态接口。</small>
+              </label>
+              <div class="form-actions">
+                <label class="enabled-control" for="source-enabled">
+                  <input id="source-enabled" type="checkbox" checked />
+                  <span class="check-box" aria-hidden="true">
+                    <svg viewBox="0 0 16 16"><path d="m3 8 3 3 7-7"></path></svg>
+                  </span>
+                  <span>启用这条规则</span>
+                </label>
+                <button class="primary-button" id="save-source" type="submit">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4Zm3 0v6h8V4M8 20v-6h8v6"></path></svg>
+                  <span id="save-label">保存并授权</span>
+                </button>
+              </div>
+            </form>
+            <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+          </section>
+
+          <section class="rules-band" aria-labelledby="rules-title">
+            <div class="section-heading compact">
+              <div>
+                <span class="eyebrow">已配置</span>
+                <h2 id="rules-title">自定义 AI 网站</h2>
+              </div>
+              <span class="count-chip" id="source-count">0 / 20</span>
+            </div>
+            <div class="source-list" id="source-list"></div>
+            <div class="empty-state" id="empty-state">
+              <span class="empty-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M7 3h10v4H7V3Zm-2 4h14v14H5V7Zm4 5h6M8 16h8"></path></svg>
+              </span>
+              <strong>还没有自定义接入</strong>
+              <p>从当前 AI 页面打开此窗口，或在上方填写网站地址。</p>
+            </div>
+          </section>
+        </div>
+
+        <aside class="guide-band" aria-labelledby="guide-title">
+          <span class="eyebrow">接入引导</span>
+          <h2 id="guide-title">两种识别方式</h2>
+
+          <section class="guide-step">
+            <span class="step-number">1</span>
+            <div>
+              <strong>选择器识别</strong>
+              <p>打开目标 AI 页面，右键点击“停止生成”按钮并检查元素，复制能唯一定位它的 CSS 选择器。</p>
+            </div>
+          </section>
+          <section class="guide-step">
+            <span class="step-number">2</span>
+            <div>
+              <strong>页面状态接口</strong>
+              <p>网站或用户脚本在生成期间设置以下属性。属性消失后，扩展会延迟确认完成并暂停视频。</p>
+            </div>
+          </section>
+
+          <div class="code-block">
+            <div class="code-heading">
+              <span>页面接入示例</span>
+              <button class="copy-button" id="copy-api" type="button" aria-label="复制接口示例" title="复制接口示例">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v12H8V8Zm-3 8H3V4h11v2"></path></svg>
+              </button>
+            </div>
+            <pre id="api-snippet"><code>// 开始工作
+document.documentElement.setAttribute(
+  "data-work-video-link-state",
+  "working"
+);
+
+// 完成或中断
+document.documentElement.removeAttribute(
+  "data-work-video-link-state"
+);</code></pre>
+          </div>
+
+          <section class="guide-note">
+            <strong>事件接口也同样可用</strong>
+            <code>work-video-link:start</code>
+            <code>work-video-link:end</code>
+          </section>
+
+          <div class="guide-footer">
+            <p>保存后会请求仅限该域名的访问权限。规则保存在同步存储中，可在其他设备恢复。</p>
+            <a id="full-guide-link" href="#" target="_blank" rel="noreferrer">查看完整开发说明</a>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="../lib/worklink.js"></script>
+    <script src="custom-ai.js"></script>
+  </body>
+</html>

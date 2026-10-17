@@ -1,0 +1,20 @@
+{
+  "name": "work-video-link",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Auto-open Douyin while ChatGPT or Codex desktop is working, then pause and return when work completes.",
+  "scripts": {
+    "check": "node --check extension/background.js && node --check extension/workbench.js && node --check extension/douyin.js && node --check extension/custom-ai.js && node --check extension/popup/popup.js && node --check extension/custom-ai/custom-ai.js && node --check extension/lib/worklink.js && node --check extension/lib/codex-bridge.js && node --check bridge/server.mjs && node --check tests/e2e-extension.mjs && node --check tests/e2e-desktop-live.mjs && node --check tests/e2e-desktop-app.mjs && node --check tests/capture-popup.mjs && node --check tests/capture-popup-unavailable.mjs && node --check tests/capture-custom-ai.mjs && node --check tests/codex-extension-connection.mjs && node --check tests/codex-desktop-probe.mjs",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "node tests/e2e-extension.mjs",
+    "test:e2e:desktop": "node tests/e2e-desktop-live.mjs",
+    "test:e2e:app": "node tests/e2e-desktop-app.mjs",
+    "test:popup": "node tests/capture-popup.mjs && node tests/capture-popup-unavailable.mjs && node tests/capture-custom-ai.mjs",
+    "test:bridge": "node tests/codex-extension-connection.mjs",
+    "package:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1",
+    "verify": "npm run check && npm test"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}

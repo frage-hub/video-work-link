@@ -1,0 +1,83 @@
+{
+  "manifest_version": 3,
+  "name": "视频工作联动",
+  "short_name": "视频联动",
+  "version": "0.6.0",
+  "description": "AI 开始工作时打开抖音网页或电脑端 App，完成后暂停并返回工作台，支持自定义 AI 网站。",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "tabs",
+    "windows",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:17321/*",
+    "http://127.0.0.1:9229/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://douyin.com/*",
+    "https://www.douyin.com/*",
+    "https://*.douyin.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "视频工作联动",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "lib/worklink.js",
+        "workbench.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://douyin.com/*",
+        "https://www.douyin.com/*",
+        "https://*.douyin.com/*"
+      ],
+      "js": [
+        "lib/worklink.js",
+        "douyin.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "toggle-session": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "开始或结束视频联动"
+    },
+    "finish-session": {
+      "suggested_key": {
+        "default": "Alt+Shift+X"
+      },
+      "description": "暂停视频并返回工作台"
+    }
+  }
+}

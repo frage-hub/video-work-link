@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>视频工作联动</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body data-status="idle">
+    <main class="app">
+      <header class="brand-row">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40">
+            <rect x="1" y="1" width="38" height="38" rx="10" fill="#171a1c" />
+            <path d="M11 9.5 29 20 11 30.5V9.5Z" fill="#25d7d1" transform="translate(-1.5 0)" />
+            <path d="M13 9.5 31 20 13 30.5V9.5Z" fill="#f13b5f" opacity=".92" />
+            <path d="M15.5 12.5 26.5 20l-11 7.5v-15Z" fill="#fff" />
+          </svg>
+        </div>
+        <div class="brand-copy">
+          <h1>视频工作联动</h1>
+          <p id="page-kind">正在读取当前页面</p>
+        </div>
+      </header>
+
+      <section class="status-band" aria-live="polite">
+        <div class="status-topline">
+          <span class="status-kicker" id="status-kicker">待机</span>
+          <span class="status-badge" id="status-badge">就绪</span>
+        </div>
+        <h2 id="status-title">正在读取状态</h2>
+        <p id="status-meta">请稍候</p>
+        <button class="primary-button" id="primary-button" type="button">
+          <span class="button-icon" id="primary-icon" aria-hidden="true"></span>
+          <span id="primary-label">开始联动</span>
+        </button>
+      </section>
+
+      <section class="settings" aria-labelledby="settings-title">
+        <div class="section-heading">
+          <h2 id="settings-title">联动设置</h2>
+          <span id="limit-hint">最多 12 个</span>
+        </div>
+
+        <div class="setting-row platform-setting">
+          <span class="setting-copy">
+            <strong>视频端</strong>
+            <small id="platform-hint">在浏览器标签页内播放</small>
+          </span>
+          <div class="segmented-control" role="group" aria-label="视频端">
+            <button id="video-mode-web" type="button" aria-pressed="true">
+              <span class="availability-dot" id="video-web-dot" aria-hidden="true"></span>
+              <span>网页版</span>
+            </button>
+            <button id="video-mode-desktop" type="button" aria-pressed="false">
+              <span class="availability-dot" id="video-desktop-dot" aria-hidden="true"></span>
+              <span>电脑端 App</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-row ai-setting-row">
+          <span class="setting-copy">
+            <strong id="auto-link-title">自动跟随 AI</strong>
+            <small id="custom-ai-hint">ChatGPT 与自定义网站</small>
+          </span>
+          <div class="setting-actions">
+            <button class="custom-ai-button" id="open-custom-ai" type="button" aria-label="配置其他 AI 网站" title="配置其他 AI 网站">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M10 14v6"></path></svg>
+              <span>其他 AI</span>
+            </button>
+            <label class="switch-control" for="auto-link">
+              <input id="auto-link" type="checkbox" />
+              <span class="switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
+        </div>
+
+        <label class="setting-row" for="desktop-link">
+          <span class="setting-copy">
+            <strong>跟随 Codex 桌面</strong>
+            <small id="desktop-hint">需要启动本地桥</small>
+          </span>
+          <span class="switch-control">
+            <input id="desktop-link" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+          </span>
+        </label>
+
+        <label class="setting-row" for="auto-return">
+          <span class="setting-copy">
+            <strong>完成后返回</strong>
+            <small>生成结束自动切回</small>
+          </span>
+          <span class="switch-control">
+            <input id="auto-return" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+          </span>
+        </label>
+
+        <div class="setting-row">
+          <span class="setting-copy">
+            <strong>视频上限</strong>
+            <small id="limit-setting-hint">达到后暂停，不继续推进</small>
+          </span>
+          <div class="stepper" role="group" aria-label="视频上限">
+            <button id="decrease-limit" type="button" aria-label="减少视频上限" title="减少">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path></svg>
+            </button>
+            <input id="max-videos" type="number" min="1" max="50" step="1" inputmode="numeric" aria-label="视频上限" />
+            <button id="increase-limit" type="button" aria-label="增加视频上限" title="增加">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="page-chip" id="page-chip">普通网页</span>
+        <span class="version">v0.6.0</span>
+      </footer>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="../lib/worklink.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
