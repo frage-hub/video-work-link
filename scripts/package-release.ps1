@@ -4,6 +4,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $extensionSource = Join-Path $repoRoot "extension"
 $bridgeSource = Join-Path $repoRoot "bridge"
 $readmeSource = Join-Path $repoRoot "README.md"
+$licenseSource = Join-Path $repoRoot "LICENSE"
 $researchSource = Join-Path $repoRoot "docs\github-research.md"
 $customAiGuideSource = Join-Path $repoRoot "docs\custom-ai-integration.md"
 $releaseRoot = Join-Path $repoRoot "release"
@@ -46,13 +47,16 @@ try {
     Copy-Item -LiteralPath $extensionSource -Destination $fullStage -Recurse
     Copy-Item -LiteralPath $bridgeSource -Destination $fullStage -Recurse
     Copy-Item -LiteralPath $readmeSource -Destination $fullStage
+    Copy-Item -LiteralPath $licenseSource -Destination $fullStage
     $docsStage = Join-Path $fullStage "docs"
     New-Item -ItemType Directory -Path $docsStage -Force | Out-Null
     Copy-Item -LiteralPath $researchSource -Destination $docsStage
     Copy-Item -LiteralPath $customAiGuideSource -Destination $docsStage
 
     Copy-Item -Path (Join-Path $extensionSource "*") -Destination $extensionStage -Recurse
+    Copy-Item -LiteralPath $licenseSource -Destination $extensionStage
     Copy-Item -Path (Join-Path $bridgeSource "*") -Destination $bridgeStage -Recurse
+    Copy-Item -LiteralPath $licenseSource -Destination $bridgeStage
 
     $fullZip = Join-Path $releaseRoot "video-work-link-v$version.zip"
     $extensionZip = Join-Path $releaseRoot "video-work-link-extension-v$version.zip"

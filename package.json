@@ -1,7 +1,8 @@
 {
   "name": "work-video-link",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
+  "license": "MIT",
   "description": "Auto-open Douyin while ChatGPT or Codex desktop is working, then pause and return when work completes.",
   "scripts": {
     "check": "node --check extension/background.js && node --check extension/workbench.js && node --check extension/douyin.js && node --check extension/custom-ai.js && node --check extension/popup/popup.js && node --check extension/custom-ai/custom-ai.js && node --check extension/lib/worklink.js && node --check extension/lib/codex-bridge.js && node --check bridge/server.mjs && node --check tests/e2e-extension.mjs && node --check tests/e2e-desktop-live.mjs && node --check tests/e2e-desktop-app.mjs && node --check tests/capture-popup.mjs && node --check tests/capture-popup-unavailable.mjs && node --check tests/capture-custom-ai.mjs && node --check tests/codex-extension-connection.mjs && node --check tests/codex-desktop-probe.mjs",

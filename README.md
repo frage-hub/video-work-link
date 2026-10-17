@@ -1,5 +1,7 @@
 # 视频工作联动
 
+[![Release](https://img.shields.io/github/v/release/frage-hub/video-work-link)](https://github.com/frage-hub/video-work-link/releases/latest) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 一个 Edge / Chrome 扩展：AI 开始工作时打开抖音并自动播放，AI 完成后暂停视频、切回工作台。支持 ChatGPT 网页、其他自定义 AI 网站和可选的 Codex 桌面联动，并可在开始前选择网页版或电脑端抖音 App。
 
 ## 先查过的 GitHub 项目
@@ -49,6 +51,8 @@
 ## 安装
 
 需要 Windows、Edge/Chrome，以及 Node.js 22 或更新版本。
+
+公开版本可从 [GitHub Releases](https://github.com/frage-hub/video-work-link/releases/latest) 下载。“完整安装包”包含扩展、本地桥、README 和接入文档；只使用网页版时也可以下载“仅扩展包”。
 
 
 1. 打开 Edge 的 `edge://extensions`，或 Chrome 的 `chrome://extensions`。
@@ -145,3 +149,7 @@ npm run test:e2e
 ```
 
 项目不需要构建步骤，`extension` 目录可直接加载。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE)，允许个人和商业使用、修改及再分发；请保留版权与许可证声明。

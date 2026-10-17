@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "视频工作联动",
   "short_name": "视频联动",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "AI 开始工作时打开抖音网页或电脑端 App，完成后暂停并返回工作台，支持自定义 AI 网站。",
   "minimum_chrome_version": "116",
   "permissions": [
