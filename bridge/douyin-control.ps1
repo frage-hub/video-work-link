@@ -31,6 +31,21 @@ public sealed class DouyinPlaybackMetrics
     public int SampleDurationMs;
 }
 
+[ComImport, Guid("56FDF342-FD6D-11d0-958A-006097C9A090"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface ITaskbarList
+{
+    void HrInit();
+    void AddTab(IntPtr hwnd);
+    void DeleteTab(IntPtr hwnd);
+    void ActivateTab(IntPtr hwnd);
+    void SetActiveAlt(IntPtr hwnd);
+}
+
+[ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090")]
+public class TaskbarList
+{
+}
+
 public static class DouyinAppControl
 {
     private const uint WM_MOUSEMOVE = 0x0200;
@@ -187,6 +202,7 @@ public static class DouyinAppControl
 
     public static bool FocusWindow(IntPtr windowHandle)
     {
+        EnsureTaskbarButton(windowHandle);
         ShowWindowAsync(windowHandle, SW_RESTORE);
         IntPtr foreground = GetForegroundWindow();
         uint foregroundProcess;
@@ -207,6 +223,28 @@ public static class DouyinAppControl
         }
         Thread.Sleep(120);
         return GetForegroundWindow() == windowHandle;
+    }
+
+    private static void EnsureTaskbarButton(IntPtr windowHandle)
+    {
+        ITaskbarList taskbar = null;
+        try
+        {
+            taskbar = (ITaskbarList)new TaskbarList();
+            taskbar.HrInit();
+            taskbar.AddTab(windowHandle);
+        }
+        catch
+        {
+            // Focus and playback control still work if Explorer is restarting.
+        }
+        finally
+        {
+            if (taskbar != null && Marshal.IsComObject(taskbar))
+            {
+                Marshal.FinalReleaseComObject(taskbar);
+            }
+        }
     }
 
     public static void ClickVideo(IntPtr renderWindow)

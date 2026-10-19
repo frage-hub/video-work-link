@@ -8,6 +8,8 @@ const CDP_HTTP = "http://127.0.0.1:9229";
 const BRIDGE_PORT = 17321;
 const DOUYIN_PROTOCOL = "douyin-pc://";
 const DOUYIN_LAUNCH_TIMEOUT_MS = 10000;
+const DOUYIN_WINDOW_LOOKUP_TIMEOUT_MS = 6000;
+const DOUYIN_WINDOW_CACHE_MS = 5 * 60 * 1000;
 const DOUYIN_CONTROL_TIMEOUT_MS = 15000;
 const DOUYIN_CONTROL_SCRIPT = fileURLToPath(
   new URL("./douyin-control.ps1", import.meta.url),
@@ -21,6 +23,8 @@ const execFileAsync = promisify(execFile);
 const clients = new Set();
 const pendingCommands = new Map();
 let douyinControlQueue = Promise.resolve();
+let douyinWindowCache = null;
+let douyinWindowCachedAt = 0;
 
 let cdpSocket = null;
 let targetId = null;
@@ -458,6 +462,38 @@ $windowTitle = if ($windowFound) { $window.MainWindowTitle } else { "" }
   }
 }
 
+function rememberDouyinWindow(window) {
+  if (
+    !window?.found ||
+    !Number.isInteger(window.processId) ||
+    !Number.isSafeInteger(window.windowHandle)
+  ) {
+    return;
+  }
+  douyinWindowCache = {
+    found: true,
+    processId: window.processId,
+    windowHandle: window.windowHandle,
+    title: String(window.title || "抖音"),
+  };
+  douyinWindowCachedAt = Date.now();
+}
+
+function getCachedDouyinWindow() {
+  if (!douyinWindowCache) return null;
+  if (Date.now() - douyinWindowCachedAt > DOUYIN_WINDOW_CACHE_MS) {
+    douyinWindowCache = null;
+    return null;
+  }
+  try {
+    process.kill(douyinWindowCache.processId, 0);
+  } catch (_) {
+    douyinWindowCache = null;
+    return null;
+  }
+  return { ...douyinWindowCache };
+}
+
 async function findDouyinWindow() {
   const script = `
 $window = Get-Process -Name douyin -ErrorAction SilentlyContinue |
@@ -475,8 +511,9 @@ if (-not $window) {
   title = $window.MainWindowTitle
 } | ConvertTo-Json -Compress
 `;
-  const output = await runPowerShell(script, 3000);
+  const output = await runPowerShell(script, DOUYIN_WINDOW_LOOKUP_TIMEOUT_MS);
   const payload = parsePlaybackPayload(output);
+  if (payload?.found) rememberDouyinWindow(payload);
   return payload || {
     found: false,
     processId: null,
@@ -622,7 +659,7 @@ async function controlDouyinPlayback(window, action, focusWindow = false) {
     action,
     focusWindow,
   );
-  return {
+  const output = {
     ...window,
     playbackState: result.state,
     playbackVerified: result.verified === true,
@@ -630,6 +667,8 @@ async function controlDouyinPlayback(window, action, focusWindow = false) {
     playbackControlMethod: result.method,
     playbackMetrics: result.metrics,
   };
+  rememberDouyinWindow(output);
+  return output;
 }
 
 async function openDouyinDesktop() {
@@ -656,6 +695,20 @@ async function openDouyinDesktop() {
 }
 
 async function pauseDouyinDesktop() {
+  const cachedWindow = getCachedDouyinWindow();
+  if (cachedWindow) {
+    try {
+      return await controlDouyinPlayback(cachedWindow, "pause", true);
+    } catch (error) {
+      douyinWindowCache = null;
+      console.warn(
+        `[bridge] Cached Douyin window failed, retrying lookup: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   const window = await findDouyinWindow();
   if (!window.found) throw new Error("电脑端抖音窗口不存在");
   return controlDouyinPlayback(window, "pause", true);
