@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "视频工作联动",
   "short_name": "视频联动",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoDC4q9xmK1Riuew/Z5zM86sWtHwvKMBS1XAr/4xvjegd69Jfyvz9FrIXdDTvVuTy22wHRhQb1xm5I0wE2S5ZKThfq/m95WfCTOcBDE1CavbI67ikrB7JzFRSoEOB3kYsWL5P/xLPI7Cx9S4xJhORuzsdedVf4COfWV5zgFok84LYG5UqFvXcINp1QUrpS7efkK8+ma2IC40qgrsCbWkSnNDlUKvT6y+GFspmZxsWJNkRg8thrPs3s7QVPR6Pua2pHxW5+Hy37nb1FDKYOa12SBNqt8546bFLlMsaup4Nzgu8hNd8a3L3qS573JISrFg8M0RkS+pb+dLUgGR1KygPEQIDAQAB",
   "description": "AI 开始工作时打开抖音网页或电脑端 App，完成后暂停并返回工作台，支持自定义 AI 网站。",
   "minimum_chrome_version": "116",

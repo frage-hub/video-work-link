@@ -97,7 +97,7 @@ async function main() {
           ? session
           : null;
       },
-      15000,
+      110000,
       "the desktop app session to start",
     );
     assert.equal(activeSession.douyinTabId, null);

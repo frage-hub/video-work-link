@@ -33,6 +33,7 @@ const DESKTOP_SUPPRESS_KEY = "desktopSuppressUntilIdle";
 const AVAILABILITY_CACHE_MS = 20000;
 const WEB_AVAILABILITY_TIMEOUT_MS = 5000;
 const DESKTOP_AVAILABILITY_TIMEOUT_MS = 6000;
+const DESKTOP_OPEN_TIMEOUT_MS = 110000;
 const CUSTOM_AI_SCRIPT_FILES = ["lib/worklink.js", "custom-ai.js"];
 
 const sessionArea = chrome.storage.session || chrome.storage.local;
@@ -1024,7 +1025,11 @@ async function startSession({
       let desktopApp = null;
 
       if (resolvedVideoMode === "desktop") {
-        desktopApp = await callDesktopBridge("/open", "POST");
+        desktopApp = await callDesktopBridge(
+          "/open",
+          "POST",
+          DESKTOP_OPEN_TIMEOUT_MS,
+        );
       } else {
         douyinTab = await openDouyin(session);
       }

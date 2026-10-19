@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("play", "pause", "state")]
+    [ValidateSet("play", "pause", "state", "probe")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
@@ -29,6 +29,18 @@ public sealed class DouyinPlaybackMetrics
     public int TimestampChangedSamples;
     public int ProgressChangedSamples;
     public int SampleDurationMs;
+}
+
+public sealed class DouyinFrameReadiness
+{
+    public bool Ready;
+    public string Reason;
+    public int Width;
+    public int Height;
+    public double MeanLuminance;
+    public double LuminanceStdDev;
+    public double DarkRatio;
+    public int WaitDurationMs;
 }
 
 [ComImport, Guid("56FDF342-FD6D-11d0-958A-006097C9A090"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -96,7 +108,7 @@ public static class DouyinAppControl
     private static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
-    private static extern bool ShowWindowAsync(IntPtr hWnd, int command);
+    private static extern bool ShowWindow(IntPtr hWnd, int command);
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -195,15 +207,25 @@ public static class DouyinAppControl
     {
         if (IsIconic(windowHandle))
         {
-            ShowWindowAsync(windowHandle, SW_RESTORE);
-            Thread.Sleep(350);
+            ShowWindow(windowHandle, SW_RESTORE);
+            for (int attempt = 0; attempt < 20 && IsIconic(windowHandle); attempt++)
+            {
+                Thread.Sleep(100);
+            }
+            if (IsIconic(windowHandle))
+            {
+                throw new InvalidOperationException(
+                    "Unable to restore the Douyin window from the tray."
+                );
+            }
         }
     }
 
     public static bool FocusWindow(IntPtr windowHandle)
     {
+        RestoreWindow(windowHandle);
         EnsureTaskbarButton(windowHandle);
-        ShowWindowAsync(windowHandle, SW_RESTORE);
+        ShowWindow(windowHandle, SW_RESTORE);
         IntPtr foreground = GetForegroundWindow();
         uint foregroundProcess;
         uint foregroundThread = GetWindowThreadProcessId(foreground, out foregroundProcess);
@@ -222,7 +244,8 @@ public static class DouyinAppControl
             }
         }
         Thread.Sleep(120);
-        return GetForegroundWindow() == windowHandle;
+        Thread.Sleep(180);
+        return !IsIconic(windowHandle) && GetForegroundWindow() == windowHandle;
     }
 
     private static void EnsureTaskbarButton(IntPtr windowHandle)
@@ -335,6 +358,86 @@ public static class DouyinAppControl
                 return metrics;
             }
         }
+    }
+
+    public static DouyinFrameReadiness MeasureReadiness(IntPtr renderWindow)
+    {
+        using (Bitmap bitmap = Capture(renderWindow))
+        {
+            int sampleStep = 12;
+            long total = 0;
+            long squareTotal = 0;
+            long darkSamples = 0;
+            long samples = 0;
+
+            for (int y = 0; y < bitmap.Height; y += sampleStep)
+            {
+                for (int x = 0; x < bitmap.Width; x += sampleStep)
+                {
+                    Color pixel = bitmap.GetPixel(x, y);
+                    int luminance = (pixel.R + pixel.G + pixel.B) / 3;
+                    total += luminance;
+                    squareTotal += (long)luminance * luminance;
+                    if (luminance < 20) darkSamples++;
+                    samples++;
+                }
+            }
+
+            double mean = samples == 0 ? 0 : (double)total / samples;
+            double variance = samples == 0
+                ? 0
+                : (double)squareTotal / samples - mean * mean;
+            double standardDeviation = Math.Sqrt(Math.Max(0, variance));
+            double darkRatio = samples == 0 ? 1 : (double)darkSamples / samples;
+
+            DouyinFrameReadiness readiness = new DouyinFrameReadiness();
+            readiness.Width = bitmap.Width;
+            readiness.Height = bitmap.Height;
+            readiness.MeanLuminance = Math.Round(mean, 2);
+            readiness.LuminanceStdDev = Math.Round(standardDeviation, 2);
+            readiness.DarkRatio = Math.Round(darkRatio, 4);
+            readiness.Ready = bitmap.Width >= 320
+                && bitmap.Height >= 240
+                && mean >= 12
+                && standardDeviation >= 22
+                && darkRatio <= 0.74;
+            readiness.Reason = readiness.Ready
+                ? "ready"
+                : bitmap.Width < 320 || bitmap.Height < 240
+                    ? "frame-too-small"
+                    : mean < 12
+                        ? "frame-too-dark"
+                        : darkRatio > 0.74
+                            ? "mostly-dark"
+                            : "loading";
+            return readiness;
+        }
+    }
+
+    public static DouyinFrameReadiness WaitForReady(
+        IntPtr renderWindow,
+        int timeoutMs
+    )
+    {
+        int startedAt = Environment.TickCount;
+        DouyinFrameReadiness readiness = new DouyinFrameReadiness();
+        readiness.Reason = "capture-not-ready";
+        while (Environment.TickCount - startedAt < timeoutMs)
+        {
+            try
+            {
+                readiness = MeasureReadiness(renderWindow);
+            }
+            catch
+            {
+                readiness = new DouyinFrameReadiness();
+                readiness.Reason = "capture-not-ready";
+            }
+            if (readiness.Ready) break;
+            Thread.Sleep(650);
+        }
+        readiness.WaitDurationMs = Environment.TickCount - startedAt;
+        return readiness;
     }
 
     private sealed class RegionStats
@@ -492,6 +595,37 @@ try {
         throw "Unable to focus the Douyin window."
     }
     $renderWindow = [DouyinAppControl]::FindRenderWindow($window)
+
+    if ($Action -eq "probe") {
+        $readiness = [DouyinAppControl]::MeasureReadiness($renderWindow)
+        [pscustomobject]@{
+            ok = $true
+            action = $Action
+            ready = $readiness.Ready
+            windowHandle = $WindowHandle
+            renderWindowHandle = $renderWindow.ToInt64()
+            readiness = $readiness
+        } | ConvertTo-Json -Depth 4 -Compress
+        exit 0
+    }
+
+    $readiness = $null
+    if ($Action -eq "play") {
+        $readiness = [DouyinAppControl]::WaitForReady($renderWindow, 65000)
+        if (-not $readiness.Ready) {
+            [pscustomobject]@{
+                ok = $false
+                action = $Action
+                code = "frame-not-ready"
+                error = "Douyin remained on a loading or black screen."
+                windowHandle = $WindowHandle
+                renderWindowHandle = $renderWindow.ToInt64()
+                readiness = $readiness
+            } | ConvertTo-Json -Depth 4 -Compress
+            exit 2
+        }
+    }
+
     $metrics = Get-PlaybackMetrics -RenderWindow $renderWindow
     $state = $metrics.State
     $attempts = 0
@@ -521,6 +655,7 @@ try {
         windowHandle = $WindowHandle
         renderWindowHandle = $renderWindow.ToInt64()
         metrics = $metrics
+        readiness = $readiness
     } | ConvertTo-Json -Depth 5 -Compress
 }
 catch {

@@ -10,6 +10,9 @@ const DOUYIN_PROTOCOL = "douyin-pc://";
 const DOUYIN_LAUNCH_TIMEOUT_MS = 10000;
 const DOUYIN_WINDOW_LOOKUP_TIMEOUT_MS = 6000;
 const DOUYIN_WINDOW_CACHE_MS = 5 * 60 * 1000;
+const DOUYIN_STALE_WINDOW_MS = 90 * 1000;
+const DOUYIN_RESTART_SETTLE_MS = 1200;
+const DOUYIN_PLAY_TIMEOUT_MS = 90000;
 const DOUYIN_CONTROL_TIMEOUT_MS = 15000;
 const DOUYIN_CONTROL_SCRIPT = fileURLToPath(
   new URL("./douyin-control.ps1", import.meta.url),
@@ -404,6 +407,18 @@ $window = $processes |
   Sort-Object StartTime -Descending |
   Select-Object -First 1
 $windowFound = $null -ne $window
+$startedProcess = if ($windowFound) {
+  $window
+} elseif ($appRunning) {
+  $processes | Sort-Object StartTime -Descending | Select-Object -First 1
+} else {
+  $null
+}
+$processStartedAt = if ($startedProcess) {
+  [DateTimeOffset]::new($startedProcess.StartTime).ToUnixTimeMilliseconds()
+} else {
+  $null
+}
 $available = $protocolRegistered -and $executableExists
 if (-not $protocolRegistered) {
   $reason = '未注册 douyin-pc:// 协议，请重新安装抖音客户端'
@@ -438,6 +453,7 @@ $windowTitle = if ($windowFound) { $window.MainWindowTitle } else { "" }
   found = [bool]$windowFound
   processId = $processId
   windowHandle = $windowHandle
+  processStartedAt = $processStartedAt
   title = $windowTitle
   reason = $reason
 } | ConvertTo-Json -Compress
@@ -456,6 +472,7 @@ $windowTitle = if ($windowFound) { $window.MainWindowTitle } else { "" }
       found: false,
       processId: null,
       windowHandle: null,
+      processStartedAt: null,
       title: "",
       reason: `无法检测电脑端抖音：${error instanceof Error ? error.message : String(error)}`,
     };
@@ -474,6 +491,9 @@ function rememberDouyinWindow(window) {
     found: true,
     processId: window.processId,
     windowHandle: window.windowHandle,
+    processStartedAt: Number.isFinite(window.processStartedAt)
+      ? window.processStartedAt
+      : null,
     title: String(window.title || "抖音"),
   };
   douyinWindowCachedAt = Date.now();
@@ -508,6 +528,7 @@ if (-not $window) {
   found = $true
   processId = $window.Id
   windowHandle = $window.MainWindowHandle.ToInt64()
+  processStartedAt = [DateTimeOffset]::new($window.StartTime).ToUnixTimeMilliseconds()
   title = $window.MainWindowTitle
 } | ConvertTo-Json -Compress
 `;
@@ -518,6 +539,7 @@ if (-not $window) {
     found: false,
     processId: null,
     windowHandle: null,
+    processStartedAt: null,
     title: "",
   };
 }
@@ -609,6 +631,17 @@ function parsePlaybackPayload(stdout) {
   }
 }
 
+function douyinControlError(payload) {
+  const message =
+    payload?.code === "frame-not-ready"
+      ? "抖音长时间停留在加载或黑屏画面，请稍后重试。"
+      : payload?.error || "电脑端抖音播放控制失败";
+  const error = new Error(message);
+  error.code = payload?.code || null;
+  error.payload = payload || null;
+  return error;
+}
+
 async function runDouyinPlaybackControl(windowHandle, action, focusWindow = false) {
   try {
     const args = [
@@ -631,7 +664,10 @@ async function runDouyinPlaybackControl(windowHandle, action, focusWindow = fals
       args,
       {
         windowsHide: true,
-        timeout: DOUYIN_CONTROL_TIMEOUT_MS,
+        timeout:
+          action === "play"
+            ? DOUYIN_PLAY_TIMEOUT_MS
+            : DOUYIN_CONTROL_TIMEOUT_MS,
         maxBuffer: 1024 * 1024,
       },
     );
@@ -640,16 +676,33 @@ async function runDouyinPlaybackControl(windowHandle, action, focusWindow = fals
     }
     const payload = parsePlaybackPayload(stdout);
     if (!payload?.ok) {
-      throw new Error(payload?.error || "电脑端抖音播放控制失败");
+      throw douyinControlError(payload);
     }
     return payload;
   } catch (error) {
     const payload = parsePlaybackPayload(error?.stdout);
-    if (payload?.error) throw new Error(payload.error);
+    if (payload?.error) throw douyinControlError(payload);
     if (error?.killed) {
       throw new Error("电脑端抖音播放复核超时");
     }
     throw error;
+  }
+}
+
+async function probeDouyinFrame(windowHandle) {
+  try {
+    const result = await runDouyinPlaybackControl(
+      windowHandle,
+      "probe",
+      false,
+    );
+    return { ...result, ready: result.ready === true };
+  } catch (error) {
+    return {
+      ok: false,
+      ready: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -666,9 +719,44 @@ async function controlDouyinPlayback(window, action, focusWindow = false) {
     playbackControlAttempts: result.attempts,
     playbackControlMethod: result.method,
     playbackMetrics: result.metrics,
+    frameReadiness: result.readiness || null,
   };
   rememberDouyinWindow(output);
   return output;
+}
+
+async function stopDouyinDesktop() {
+  douyinWindowCache = null;
+  await runPowerShell(
+    `$ErrorActionPreference = 'SilentlyContinue'
+$processes = @(Get-Process -Name douyin)
+foreach ($process in $processes) {
+  Stop-Process -Id $process.Id -Force
+}
+$deadline = [DateTime]::UtcNow.AddSeconds(8)
+while (@(Get-Process -Name douyin).Count -gt 0 -and [DateTime]::UtcNow -lt $deadline) {
+  Start-Sleep -Milliseconds 200
+}
+if (@(Get-Process -Name douyin).Count -gt 0) {
+  throw '无法关闭旧抖音进程'
+}
+`,
+    12000,
+  );
+}
+
+async function launchDouyinDesktop() {
+  await runPowerShell(`Start-Process -FilePath '${DOUYIN_PROTOCOL}'`, 10000);
+  const deadline = Date.now() + DOUYIN_LAUNCH_TIMEOUT_MS;
+  let status = await inspectDouyinDesktop();
+  while (!status.windowFound && Date.now() < deadline) {
+    await delay(250);
+    status = await inspectDouyinDesktop();
+  }
+  if (!status.windowFound) {
+    throw new Error("电脑端抖音正在启动，但暂未找到可聚焦窗口");
+  }
+  return status;
 }
 
 async function openDouyinDesktop() {
@@ -678,20 +766,34 @@ async function openDouyinDesktop() {
   }
 
   const alreadyRunning = status.appRunning;
-  if (!status.windowFound) {
-    await runPowerShell(`Start-Process -FilePath '${DOUYIN_PROTOCOL}'`, 10000);
-    const deadline = Date.now() + DOUYIN_LAUNCH_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      await delay(250);
-      status = await inspectDouyinDesktop();
-      if (status.windowFound) break;
+  let restarted = false;
+  const startedAt = Number(status.processStartedAt);
+  const staleProcess = Number.isFinite(startedAt)
+    && startedAt > 0
+    && Date.now() - startedAt > DOUYIN_STALE_WINDOW_MS;
+
+  if (status.windowFound && staleProcess) {
+    const readiness = await probeDouyinFrame(status.windowHandle);
+    if (!readiness.ready) {
+      console.warn(
+        "[bridge] Douyin frame is not ready; restarting stale desktop client",
+      );
+      await stopDouyinDesktop();
+      await delay(DOUYIN_RESTART_SETTLE_MS);
+      status = await launchDouyinDesktop();
+      restarted = true;
     }
+  } else if (!status.windowFound) {
+    if (status.appRunning && staleProcess) {
+      await stopDouyinDesktop();
+      await delay(DOUYIN_RESTART_SETTLE_MS);
+      restarted = true;
+    }
+    status = await launchDouyinDesktop();
   }
-  if (!status.windowFound) {
-    throw new Error("电脑端抖音正在启动，但暂未找到可聚焦窗口");
-  }
+
   const control = await controlDouyinPlayback(status, "play", true);
-  return { ...control, alreadyRunning };
+  return { ...control, alreadyRunning, restarted };
 }
 
 async function pauseDouyinDesktop() {
